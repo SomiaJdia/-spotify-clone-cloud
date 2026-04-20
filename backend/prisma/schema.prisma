@@ -1,0 +1,62 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id // ID Keycloak
+  username  String   
+  email     String     @unique
+  playlist  Playlist?  // Un utilisateur possède une seule playlist
+  favorite  Favorite?  // Un utilisateur possède un seul favori
+  likes     Like[]     // Les likes directs restent une liste (optionnel)
+   @@map("user")
+}
+
+model Song {
+  id          String     @id @default(cuid())
+  title       String
+  audioKey    String     // Lien vers le stockage MinIO
+  coverKey    String?    // Lien vers l'image de couverture
+  artistName  String
+  likes       Like[]
+  playlists   Playlist[] // Relation n-à-n implicite
+  favorites   Favorite[] // Relation n-à-n implicite
+
+  @@map("song")
+}
+
+model Playlist {
+  id     String @id @default(cuid())
+  name   String
+  userId String @unique // Contrainte unique pour la relation 1-à-1
+  user   User   @relation(fields: [userId], references: [id])
+  songs  Song[]
+  @@map("playlist") 
+}
+
+model Favorite {
+  id     String @id @default(cuid())
+  userId String @unique // Contrainte unique pour la relation 1-à-1
+  user   User   @relation(fields: [userId], references: [id])
+  songs  Song[]
+  @@map("favorite")
+}
+
+model Like {
+  userId String
+  songId String
+  user   User   @relation(fields: [userId], references: [id])
+  song   Song   @relation(fields: [songId], references: [id])
+  @@id([userId, songId])
+   @@map("like")
+}

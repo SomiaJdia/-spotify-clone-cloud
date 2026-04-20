@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: spotify_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: 123
+      POSTGRES_DB: db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - spotify_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- LA NOUVELLE DB POUR KEYCLOAK ---
+  keycloak_db:
+    image: postgres:15-alpine
+    container_name: keycloak_db
+    environment:
+      POSTGRES_USER: keycloak_admin
+      POSTGRES_PASSWORD: keycloak_password
+      POSTGRES_DB: keycloak_data
+    networks:
+      - spotify_net
+    volumes:
+      - keycloak_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak_admin -d keycloak_data"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- KEYCLOAK ---
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: spotify_keycloak
+    command: start-dev
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://keycloak_db:5432/keycloak_data
+      - KC_DB_USERNAME=keycloak_admin
+      - KC_DB_PASSWORD=keycloak_password
+    ports:
+      - "8080:8080"
+    depends_on:
+      keycloak_db:
+        condition: service_healthy
+    networks:
+      - spotify_net
+  minio:
+    image: minio/minio:latest
+    container_name: spotify_minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    networks:
+      - spotify_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc
+    container_name: spotify_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - spotify_net
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc mb myminio/music-bucket || true;
+      mc anonymous set download myminio/music-bucket;
+      exit 0;
+      "
+
+  backend:
+    build: ./backend
+    container_name: spotify_backend
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_USER=user
+      - DB_PASSWORD=123
+      - DB_NAME=db
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DATABASE_URL=postgresql://user:123@db:5432/db?schema=public
+    networks:
+      - spotify_net
+    env_file:
+      - ./backend/.env
+    volumes:
+     - ./backend:/app #pour prendre tout les fichiers 
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: spotify_frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_BACKEND_URL=http://localhost:5000
+      - VITE_MINIO_URL=http://localhost:9000
+    networks:
+      - spotify_net
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  miniodata:
+  keycloak_pgdata:
+
+networks:
+  spotify_net:
+    driver: bridge

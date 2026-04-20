@@ -1,0 +1,30 @@
+version: '3'
+
+services:
+  backend:
+    image: <VOTRE_DOCKER_USER>/spotify-backend:latest
+    container_name: spotify_backend
+    ports:
+      - "5000:5000"
+    environment:
+      # L'IP Privée de la VM 2 (PostgreSQL)
+      - DB_HOST=<IP_VM2_POSTGRES>
+      - DB_USER=spotify_user
+      - DB_PASSWORD=spotify_password
+      - DB_NAME=spotify_db
+      - DB_PORT=5432
+      # L'IP Privée de la VM 3 (MinIO) pour le stockage interne
+      - MINIO_ENDPOINT=<IP_VM3_MINIO>:9000
+
+  frontend:
+    image: <VOTRE_DOCKER_USER>/spotify-frontend:latest
+    container_name: spotify_frontend
+    ports:
+      - "3000:80"
+    environment:
+      # L'IP Flottante (Public) de la VM 1 (Cette machine)
+      - VITE_BACKEND_URL=http://<IP_PUBLIC_VM1>:5000
+      # L'IP Flottante (Public) de la VM 3 (MinIO)
+      - VITE_MINIO_URL=http://<IP_PUBLIC_VM3>:9000
+    depends_on:
+      - backend

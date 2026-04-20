@@ -1,0 +1,22 @@
+# Node modules
+node_modules/
+dist/
+build/
+
+*.box
+# Environnement
+.env
+.env.local
+.env.*.local
+
+# Docker logs
+*.log
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
